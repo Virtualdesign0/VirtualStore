@@ -5,3 +5,4 @@ A reliable Roblox DataStore framework for managing player profiles, safe saves, 
 VirtualStore helps prevent data loss during disconnects, teleports, server crashes, and temporary DataStore failures while keeping the API simple to use.
 
 [Read the documentation](https://virtualdesign0.github.io/VirtualStore/)
+[Latest Release](https://github.com/Virtualdesign0/VirtualStore/releases/tag/v0.1.0)
