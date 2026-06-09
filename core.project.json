@@ -1,0 +1,30 @@
+{
+  "name": "VirtualStoreCore",
+  "tree": {
+    "$path": "src/VirtualStore/VirtualStore.luau",
+    "Client": {
+      "$path": "src/VirtualStore/Client.luau"
+    },
+    "Core": {
+      "$path": "src/VirtualStore/Core"
+    },
+    "DataStoreAdapter": {
+      "$path": "src/VirtualStore/DataStoreAdapter.luau"
+    },
+    "MemoryAdapter": {
+      "$path": "src/VirtualStore/MemoryAdapter.luau"
+    },
+    "PlayerStore": {
+      "$path": "src/VirtualStore/PlayerStore.luau"
+    },
+    "ReplicationServer": {
+      "$path": "src/VirtualStore/ReplicationServer.luau"
+    },
+    "Signal": {
+      "$path": "src/VirtualStore/Signal.luau"
+    },
+    "Util": {
+      "$path": "src/VirtualStore/Util.luau"
+    }
+  }
+}
