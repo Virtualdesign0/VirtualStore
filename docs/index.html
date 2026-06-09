@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<meta
+		name="description"
+		content="VirtualStore is a Roblox DataStore library for player profiles, safe saves, offline operations, client replication and recovery tools."
+	/>
+	<title>VirtualStore Documentation</title>
+	<link rel="stylesheet" href="style.css" />
+	<script src="script.js" defer="defer"></script>
+</head>
+<body>
+	<a class="skip-link" href="#main">Skip to documentation</a>
+
+	<header class="site-header">
+		<nav class="nav" aria-label="Primary navigation">
+			<a class="brand" href="#top" aria-label="VirtualStore home">
+				<span class="brand-mark" aria-hidden="true">VS</span>
+				<span class="brand-copy">
+					<strong>VirtualStore</strong>
+					<small>v0.1.0</small>
+				</span>
+			</a>
+
+			<div class="nav-links">
+				<a href="#start">Start</a>
+				<a href="#concepts">Concepts</a>
+				<a href="#structure">Structure</a>
+				<a href="#guarantees">Guarantees</a>
+				<a href="#recovery">Recovery</a>
+				<a href="#reference">Reference</a>
+			</div>
+
+		</nav>
+	</header>
+
+	<main id="main">
+		<section id="top" class="hero">
+			<canvas id="networkCanvas" aria-label="Animated VirtualStore lease, save and operation network"></canvas>
+			<div class="hero-shade" aria-hidden="true"></div>
+			<div class="hero-inner">
+				<p class="kicker">DataStore library for Roblox</p>
+				<h1>VirtualStore</h1>
+				<p class="hero-text">
+					A practical way to load player profiles, save changes, send safe data to the client,
+					and recover work when a player disconnects or Roblox services fail.
+				</p>
+
+				<div class="hero-actions">
+					<a class="button button-primary" href="#start">Get started</a>
+					<a class="button button-secondary" href="#guarantees">Read the safety notes</a>
+				</div>
+
+				<ul class="hero-facts" aria-label="Package highlights">
+					<li><span>01</span> One server owns a loaded profile</li>
+					<li><span>02</span> Important work survives disconnects</li>
+					<li><span>03</span> Clients receive only approved paths</li>
+				</ul>
+			</div>
+
+			<div class="hero-monitor" aria-live="polite">
+				<div>
+					<span class="monitor-label">Now</span>
+					<strong id="visual-status">Claiming player lease</strong>
+				</div>
+				<div>
+					<span class="monitor-label">Why</span>
+					<strong id="visual-detail">Only the stored lease owner may commit.</strong>
+				</div>
+			</div>
+		</section>
+
+		<section id="start" class="section reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Start here</p>
+					<h2>Save player data with one shared module.</h2>
+				</div>
+				<p>
+					For most games, <code>VirtualStore.players</code> is the right entry point. It opens
+					<code>Player_&lt;UserId&gt;</code>, retries temporary load failures, releases the profile
+					when the player leaves, and can replicate selected fields to the client.
+				</p>
+			</div>
+
+			<div class="code-layout">
+				<div class="code-shell">
+					<div class="code-toolbar">
+						<span>ServerScriptService / PlayerData.server.luau</span>
+						<button class="copy-button" type="button" data-copy='local VirtualStore = require(ServerScriptService.VirtualStore)\n\nlocal Data = VirtualStore.players({\n    Name = "PlayerData",\n    Template = {\n        Wallet = { Coins = 0 },\n        Inventory = {},\n    },\n    Public = {\n        {"Wallet", "Coins"},\n        "Inventory",\n    },\n})\n\nData:Add(player, {"Wallet", "Coins"}, 100)'>Copy</button>
+					</div>
+<pre><code><span class="tok-key">local</span> ServerScriptService = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ServerScriptService"</span>)
+<span class="tok-key">local</span> VirtualStore = <span class="tok-call">require</span>(ServerScriptService.VirtualStore)
+
+<span class="tok-key">local</span> Data = VirtualStore.<span class="tok-call">players</span>({
+    Name = <span class="tok-string">"PlayerData"</span>,
+    Template = {
+        Wallet = { Coins = <span class="tok-number">0</span> },
+        Inventory = {},
+    },
+    Public = {
+        {<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>},
+        <span class="tok-string">"Inventory"</span>,
+    },
+})
+
+Data:<span class="tok-call">Add</span>(player, {<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>}, <span class="tok-number">100</span>)</code></pre>
+				</div>
+
+				<div class="flow-list" aria-label="Player data lifecycle">
+					<div class="flow-row">
+						<span>01</span>
+						<div><strong>Open</strong><p>Load the profile and make sure another server is not still using it.</p></div>
+					</div>
+					<div class="flow-row">
+						<span>02</span>
+						<div><strong>Change</strong><p>Use helpers or a transaction so invalid data does not reach the live profile.</p></div>
+					</div>
+					<div class="flow-row">
+						<span>03</span>
+						<div><strong>Replicate</strong><p>Send only the fields the player's UI needs.</p></div>
+					</div>
+					<div class="flow-row">
+						<span>04</span>
+						<div><strong>Release</strong><p>Save one last time, then let the next server open the profile.</p></div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="section band reveal">
+			<div class="section-heading">
+				<p class="kicker">Quick guide</p>
+				<h2>Which API should I use?</h2>
+			</div>
+
+			<div class="decision-table" role="table" aria-label="VirtualStore API decision guide">
+				<div class="decision-row decision-head" role="row">
+					<span role="columnheader">Need</span>
+					<span role="columnheader">Use</span>
+					<span role="columnheader">Why</span>
+				</div>
+				<div class="decision-row" role="row">
+					<span>Load and save players</span><code>VirtualStore.players</code><span>Use this for the normal player join-to-leave lifecycle.</span>
+				</div>
+				<div class="decision-row" role="row">
+					<span>Change one value</span><code>Set / Add / Increment</code><span>Simple, validated, and easy to replicate.</span>
+				</div>
+				<div class="decision-row" role="row">
+					<span>Change several values together</span><code>Edit / Transaction</code><span>If one check fails, none of the changes are kept.</span>
+				</div>
+				<div class="decision-row" role="row">
+					<span>Finish after a disconnect</span><code>Durable operation</code><span>Store the pending work so another session can finish it.</span>
+				</div>
+				<div class="decision-row" role="row">
+					<span>Save before teleport or checkout</span><code>CheckpointAsync</code><span>Wait for a confirmed save before continuing.</span>
+				</div>
+				<div class="decision-row" role="row">
+					<span>Trade across profiles</span><code>Saga / coordinator</code><span>Track every step because Roblox cannot save both keys at once.</span>
+				</div>
+			</div>
+		</section>
+
+		<section id="structure" class="section band reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Project structure</p>
+					<h2>A project layout you can actually maintain.</h2>
+				</div>
+				<p>
+					The beginner layout is enough for a small game. The advanced layout is for projects where
+					several systems or developers share the same profile and need clear ownership.
+				</p>
+			</div>
+
+			<div class="level-switch" role="group" aria-label="Project structure level">
+				<button type="button" class="level-button is-active" data-level="beginner">Beginner</button>
+				<button type="button" class="level-button" data-level="advanced">Advanced</button>
+			</div>
+
+			<div class="level-panel is-active" data-level-panel="beginner">
+				<div class="structure-intro">
+					<div>
+						<span>Goal</span>
+						<strong>Keep one DataService and call it from your server scripts.</strong>
+						<p>This is the simplest setup that stays safe. Server scripts call a few clear methods; clients read replicated values and ask the server to perform actions.</p>
+					</div>
+					<ul>
+						<li>Server owns every mutation and reward value.</li>
+						<li>DataService is the only module that constructs VirtualStore.</li>
+						<li>Gameplay scripts never write <code>session.Data</code> directly.</li>
+						<li>Client scripts never receive the complete private profile.</li>
+					</ul>
+				</div>
+
+				<div class="structure-layout">
+					<div class="file-tree" aria-label="Beginner Roblox project structure">
+						<div class="tree-title">Beginner Roblox hierarchy</div>
+						<div><strong>ServerScriptService</strong><span>server-only code</span></div>
+						<div class="tree-depth-1"><strong>VirtualStore</strong><span>installed package</span></div>
+						<div class="tree-depth-1"><strong>DataService</strong><span>creates and exports Data</span></div>
+						<div class="tree-depth-1"><strong>LeaderboardService</strong><span>projects saved scores</span></div>
+						<div class="tree-depth-1"><strong>CoinGiver.server</strong><span>trusted gameplay action</span></div>
+						<div class="tree-depth-1"><strong>Shop.server</strong><span>multi-field transaction</span></div>
+						<div><strong>ReplicatedStorage</strong><span>shared read/request boundary</span></div>
+						<div class="tree-depth-1"><strong>Remotes</strong><span>client requests only</span></div>
+						<div class="tree-depth-1"><strong>VirtualStoreClient</strong><span>installed automatically</span></div>
+						<div><strong>StarterPlayerScripts</strong><span>presentation code</span></div>
+						<div class="tree-depth-1"><strong>DataHud.client</strong><span>observes public replica</span></div>
+					</div>
+
+					<div class="responsibility-list">
+						<article><span>DataService</span><p>Defines template, public paths and operations once. Exports the ready player facade to every server gameplay script.</p></article>
+						<article><span>CoinGiver / Shop</span><p>Validates the RemoteEvent request, waits for loaded data and calls <code>Add</code> or <code>Edit</code>. It never decides based on client-provided reward values.</p></article>
+						<article><span>DataHud.client</span><p>Connects to the named replica and observes public paths. It cannot save or mutate server data.</p></article>
+						<article><span>LeaderboardService</span><p>Projects the saved authoritative score into OrderedDataStore and serves bounded top/rank queries.</p></article>
+					</div>
+				</div>
+
+				<div class="structure-code-grid">
+					<div class="code-shell">
+						<div class="code-toolbar"><span>DataService ModuleScript</span></div>
+<pre><code><span class="tok-key">local</span> VirtualStore = <span class="tok-call">require</span>(ServerScriptService.VirtualStore)
+
+<span class="tok-key">local</span> Data = VirtualStore.<span class="tok-call">players</span>({
+    Name = <span class="tok-string">"PlayerData"</span>,
+    Template = {
+        Wallet = { Coins = <span class="tok-number">0</span> },
+        Inventory = {},
+    },
+    Replication = {
+        Name = <span class="tok-string">"PlayerData"</span>,
+        Paths = {{<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>}, <span class="tok-string">"Inventory"</span>},
+    },
+})
+
+<span class="tok-key">return</span> Data</code></pre>
+					</div>
+					<div class="code-shell">
+						<div class="code-toolbar"><span>CoinGiver.server Script</span></div>
+<pre><code><span class="tok-key">local</span> ReplicatedStorage = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ReplicatedStorage"</span>)
+<span class="tok-key">local</span> ServerScriptService = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ServerScriptService"</span>)
+<span class="tok-key">local</span> Data = <span class="tok-call">require</span>(ServerScriptService.DataService)
+<span class="tok-key">local</span> claimRemote = ReplicatedStorage.Remotes.ClaimCoins
+<span class="tok-key">local</span> lastClaim = {}
+
+claimRemote.OnServerEvent:<span class="tok-call">Connect</span>(<span class="tok-key">function</span>(player)
+    <span class="tok-key">local</span> now = os.<span class="tok-call">clock</span>()
+    <span class="tok-key">if</span> now - (lastClaim[player] or <span class="tok-number">0</span>) &lt; <span class="tok-number">1</span> <span class="tok-key">then return end</span>
+    lastClaim[player] = now
+
+    <span class="tok-key">local</span> _, loadError = Data:<span class="tok-call">Wait</span>(player, <span class="tok-number">5</span>)
+    <span class="tok-key">if</span> loadError <span class="tok-key">then return end</span>
+
+    <span class="tok-key">local</span> ok, err = Data:<span class="tok-call">Add</span>(
+        player,
+        {<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>},
+        <span class="tok-number">10</span>,
+        {Source = <span class="tok-string">"CoinGiver"</span>}
+    )
+    <span class="tok-key">if not</span> ok <span class="tok-key">then</span> warn(err.Code, err.Message) <span class="tok-key">end</span>
+<span class="tok-key">end</span>)</code></pre>
+					</div>
+					<div class="code-shell">
+						<div class="code-toolbar"><span>DataHud.client LocalScript</span></div>
+<pre><code><span class="tok-key">local</span> ReplicatedStorage = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ReplicatedStorage"</span>)
+<span class="tok-key">local</span> Client = <span class="tok-call">require</span>(
+    ReplicatedStorage:<span class="tok-call">WaitForChild</span>(<span class="tok-string">"VirtualStoreClient"</span>)
+)
+<span class="tok-key">local</span> Replica = Client.<span class="tok-call">connect</span>(<span class="tok-string">"PlayerData"</span>)
+
+Replica:<span class="tok-call">Observe</span>({<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>}, <span class="tok-key">function</span>(coins)
+    coinsLabel.Text = <span class="tok-call">tostring</span>(coins)
+<span class="tok-key">end</span>)</code></pre>
+					</div>
+				</div>
+			</div>
+
+			<div class="level-panel" data-level-panel="advanced">
+				<div class="structure-intro advanced-intro">
+					<div>
+						<span>Goal</span>
+						<strong>Give each system a clear part of the profile.</strong>
+						<p>Use this when economy, inventory, progression and operations are large enough to be maintained separately. Each module gets a clear job and fewer reasons to touch unrelated data.</p>
+					</div>
+					<ul>
+						<li>Bootstrap wires dependencies; it does not contain gameplay.</li>
+						<li>Each domain owns a limited set of profile paths.</li>
+						<li>Cross-server delivery enters through deterministic operations.</li>
+						<li>Cross-key economy enters through a coordinator and journal.</li>
+					</ul>
+				</div>
+
+				<div class="structure-layout">
+					<div class="file-tree" aria-label="Advanced Roblox project structure">
+						<div class="tree-title">Advanced Roblox hierarchy</div>
+						<div><strong>ServerScriptService / Data</strong><span>persistence composition</span></div>
+						<div class="tree-depth-1"><strong>Bootstrap.server</strong><span>starts Data and services</span></div>
+						<div class="tree-depth-1"><strong>PlayerData</strong><span>exports configured facade</span></div>
+						<div class="tree-depth-1"><strong>Schema</strong><span>template + schema version</span></div>
+						<div class="tree-depth-1"><strong>Migrations</strong><span>old shape conversions</span></div>
+						<div class="tree-depth-1"><strong>Operations</strong><span>deterministic durable handlers</span></div>
+						<div class="tree-depth-1"><strong>Replication</strong><span>public path policy</span></div>
+						<div class="tree-depth-1"><strong>OrderedIndex</strong><span>optional sorted projection</span></div>
+						<div><strong>ServerScriptService / Domains</strong><span>gameplay ownership</span></div>
+						<div class="tree-depth-1"><strong>EconomyService</strong><span>Wallet paths</span></div>
+						<div class="tree-depth-1"><strong>InventoryService</strong><span>Inventory paths</span></div>
+						<div class="tree-depth-1"><strong>ProgressionService</strong><span>Progress paths</span></div>
+						<div class="tree-depth-1"><strong>TradeCoordinator</strong><span>journal + saga + repair</span></div>
+						<div class="tree-depth-1"><strong>LeaderboardService</strong><span>projection + sorted queries</span></div>
+						<div><strong>ServerScriptService / Admin</strong><span>trusted incident tooling</span></div>
+						<div class="tree-depth-1"><strong>DataRepairService</strong><span>authorized repair calls</span></div>
+						<div><strong>StarterPlayerScripts / Controllers</strong><span>client presentation</span></div>
+						<div class="tree-depth-1"><strong>DataController</strong><span>replica observers</span></div>
+					</div>
+
+					<div class="ownership-matrix">
+						<div class="matrix-head"><span>Module</span><span>May write</span><span>Must not own</span></div>
+						<div><strong>EconomyService</strong><code>Wallet</code><span>Inventory grants, admin repair</span></div>
+						<div><strong>InventoryService</strong><code>Inventory / Equipped</code><span>Currency pricing, trade journal</span></div>
+						<div><strong>ProgressionService</strong><code>Progress / Quests</code><span>Purchase fulfillment</span></div>
+						<div><strong>Operations</strong><code>Declared handler paths</code><span>Yielding or external side effects</span></div>
+						<div><strong>TradeCoordinator</strong><code>Journal + queued intents</code><span>Direct multi-key atomic claims</span></div>
+						<div><strong>LeaderboardService</strong><code>Ordered projection only</code><span>Authoritative economy decisions</span></div>
+						<div><strong>DataRepairService</strong><code>Authorized exact key</code><span>Client-controlled input</span></div>
+					</div>
+				</div>
+
+				<div class="structure-code-grid advanced-code-grid">
+					<div class="code-shell">
+						<div class="code-toolbar"><span>PlayerData ModuleScript</span></div>
+<pre><code><span class="tok-key">local</span> ServerScriptService = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ServerScriptService"</span>)
+<span class="tok-key">local</span> VirtualStore = <span class="tok-call">require</span>(ServerScriptService.VirtualStore)
+<span class="tok-key">local</span> Schema = <span class="tok-call">require</span>(script.Parent.Schema)
+<span class="tok-key">local</span> Operations = <span class="tok-call">require</span>(script.Parent.Operations)
+
+<span class="tok-key">return</span> VirtualStore.<span class="tok-call">players</span>({
+    Name = <span class="tok-string">"PlayerData"</span>,
+    SchemaVersion = Schema.Version,
+    Template = Schema.Template,
+    Migrations = Schema.Migrations,
+    Operations = Operations,
+    Replication = <span class="tok-call">require</span>(script.Parent.Replication),
+    Settings = {
+        StrictData = <span class="tok-key">true</span>,
+        TrackChangeDetails = <span class="tok-key">true</span>,
+        AuditLogLimit = <span class="tok-number">50</span>,
+    },
+})</code></pre>
+					</div>
+					<div class="code-shell">
+						<div class="code-toolbar"><span>EconomyService ModuleScript</span></div>
+<pre><code><span class="tok-key">local</span> EconomyService = {}
+<span class="tok-key">local</span> Data
+<span class="tok-key">local</span> VirtualStore
+
+<span class="tok-key">function</span> EconomyService.<span class="tok-call">Start</span>(data, virtualStore)
+    Data = data
+    VirtualStore = virtualStore
+<span class="tok-key">end</span>
+
+<span class="tok-key">function</span> EconomyService.<span class="tok-call">Purchase</span>(player, itemId, price)
+    <span class="tok-key">return</span> Data:<span class="tok-call">Edit</span>(player, <span class="tok-key">function</span>(profile)
+        <span class="tok-key">if</span> profile.Wallet.Coins &lt; price <span class="tok-key">then</span>
+            <span class="tok-key">return</span> VirtualStore.Cancel
+        <span class="tok-key">end</span>
+
+        profile.Wallet.Coins -= price
+        table.<span class="tok-call">insert</span>(profile.Inventory, itemId)
+    <span class="tok-key">end</span>, {
+        Reason = <span class="tok-string">"Purchase"</span>,
+        Source = <span class="tok-string">"EconomyService"</span>,
+    })
+<span class="tok-key">end</span>
+
+<span class="tok-key">return</span> EconomyService</code></pre>
+					</div>
+					<div class="code-shell">
+						<div class="code-toolbar"><span>Operations ModuleScript</span></div>
+<pre><code><span class="tok-key">return</span> {
+    GrantMatchReward = <span class="tok-key">function</span>(profile, payload)
+        <span class="tok-key">assert</span>(<span class="tok-call">type</span>(payload.Coins) == <span class="tok-string">"number"</span>)
+        profile.Wallet.Coins += payload.Coins
+        <span class="tok-key">return</span> {Granted = payload.Coins}
+    <span class="tok-key">end</span>,
+}</code></pre>
+					</div>
+					<div class="code-shell">
+						<div class="code-toolbar"><span>Bootstrap.server Script</span></div>
+<pre><code><span class="tok-key">local</span> ServerScriptService = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ServerScriptService"</span>)
+<span class="tok-key">local</span> VirtualStore = <span class="tok-call">require</span>(ServerScriptService.VirtualStore)
+<span class="tok-key">local</span> Data = <span class="tok-call">require</span>(script.Parent.PlayerData)
+<span class="tok-key">local</span> Economy = <span class="tok-call">require</span>(ServerScriptService.Domains.EconomyService)
+<span class="tok-key">local</span> Inventory = <span class="tok-call">require</span>(ServerScriptService.Domains.InventoryService)
+
+Economy.<span class="tok-call">Start</span>(Data, VirtualStore)
+Inventory.<span class="tok-call">Start</span>(Data, VirtualStore)
+
+Data.Store.CriticalStateChanged:<span class="tok-call">Connect</span>(<span class="tok-key">function</span>(critical)
+    Economy.<span class="tok-call">SetPurchasesEnabled</span>(<span class="tok-key">not</span> critical)
+<span class="tok-key">end</span>)</code></pre>
+					</div>
+				</div>
+
+				<div class="architecture-rules">
+					<article><span>Rule 01</span><strong>Construct once</strong><p>Create the player facade in one ModuleScript. Requiring that module returns the same configured data surface to every domain.</p></article>
+					<article><span>Rule 02</span><strong>Mutate through owners</strong><p>Remote handlers call domain services. They do not directly reach into arbitrary profile paths.</p></article>
+					<article><span>Rule 03</span><strong>Operations are pure</strong><p>Handlers validate payload facts, mutate one profile and return a result. They never yield or call external services.</p></article>
+					<article><span>Rule 04</span><strong>Admin stays isolated</strong><p>Repair capabilities live in server-only tooling and never cross a client RemoteEvent or RemoteFunction.</p></article>
+				</div>
+			</div>
+		</section>
+
+		<section id="concepts" class="section reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">How it works</p>
+					<h2>The parts worth knowing.</h2>
+				</div>
+				<p>
+					You do not need every feature on day one. Read the first few topics before starting,
+					then come back when your game needs offline rewards, repair tools, or multi-key workflows.
+				</p>
+			</div>
+
+			<div class="concept-toolbar">
+				<label class="search-box">
+					<span>Filter concepts</span>
+					<input id="conceptSearch" type="search" placeholder="Try: lease, crash, trade, client" />
+				</label>
+				<p><strong>New here?</strong> Read the first six in order. The rest can wait until you need them.</p>
+			</div>
+
+			<div class="concept-list" id="conceptList">
+				<details class="concept-item" open="open" data-search="players facade core store entry point lifecycle easy setup">
+					<summary><span>01</span><strong>Player facade and core Store</strong><em>Choose the entry point</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p><code>VirtualStore.players</code> is the convenient player lifecycle layer. <code>VirtualStore.new</code> is the lower-level key-based Store.</p></div>
+						<div><span>What happens</span><p>The player facade opens <code>Player_&lt;UserId&gt;</code>, associates GDPR IDs, tracks players, releases sessions and exposes short mutation helpers over a normal Store.</p></div>
+						<div><span>Good for</span><p>Use <code>players</code> for ordinary player profiles. Use the core Store for guilds, auctions, global records, custom keys or infrastructure code.</p></div>
+						<div><span>Watch out</span><p>The facade is not a second persistence system. Advanced work remains available through <code>Data.Store</code>.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="record envelope data meta template schema profile storage">
+					<summary><span>02</span><strong>Record envelope, template and schema</strong><em>What a saved record contains</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Every key stores gameplay <code>Data</code> beside internal <code>Meta</code>, a schema version and a VirtualStore format marker.</p></div>
+						<div><span>What happens</span><p>The template supplies missing defaults. Metadata holds the lease, revisions, user IDs, tags, write receipts and operation ledgers without mixing them into gameplay data.</p></div>
+						<div><span>Good for</span><p>Put persistent gameplay state in the template: currency, inventory, settings and progression. Treat metadata as framework-owned.</p></div>
+						<div><span>Watch out</span><p>A template is not a fallback for a failed load. VirtualStore fails closed instead of replacing unknown stored data with defaults.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="lease session lock ownership server teleport stale overwrite">
+					<summary><span>03</span><strong>Lease ownership</strong><em>Prevent stale server saves</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A lease is an expiring ownership token stored with one key. It identifies the only server allowed to save that active profile.</p></div>
+						<div><span>What happens</span><p>Open claims a token inside <code>UpdateAsync</code>. Every later write verifies the same stored token. Another server may claim only after release or expiry.</p></div>
+						<div><span>Good for</span><p>Leases automatically protect player joins, teleports, reconnects and any record that must have one active writer.</p></div>
+						<div><span>Watch out</span><p>A lease is not a gameplay resource lock and should not be force-released casually; another server may still have unsaved RAM changes.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="session active memory lifecycle releasing released lease lost">
+					<summary><span>04</span><strong>Active Session</strong><em>Work with live profile state</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A Session is the server-memory view of one opened record, with safe mutation, save, operation and release methods.</p></div>
+						<div><span>What happens</span><p>It moves through explicit states such as Active, Releasing, Released and LeaseLost. Only an Active owner may mutate or commit.</p></div>
+						<div><span>Good for</span><p>Use the active session for gameplay involving an online player or an opened custom record.</p></div>
+						<div><span>Watch out</span><p>Memory is not durable by itself. A full server-process crash can lose changes that were never checkpointed or represented as durable operations.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="strict data path set patch increment insert remove dirty changed replication">
+					<summary><span>05</span><strong>StrictData and path mutations</strong><em>Make normal changes observable</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p><code>StrictData</code> makes public profile data read-only. Changes go through <code>Set</code>, <code>Patch</code>, <code>Increment</code>, <code>Insert</code>, <code>Remove</code> or a transaction.</p></div>
+						<div><span>What happens</span><p>Safe helpers copy and validate the change, mark the session dirty, record changed paths and notify replication and audit listeners.</p></div>
+						<div><span>Good for</span><p>Use path helpers for small focused changes such as adding coins, changing a setting or inserting an item.</p></div>
+						<div><span>Watch out</span><p>Direct writes to non-strict <code>session.Data</code> cannot immediately emit paths and can bypass validation, audit and replication behavior.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="transaction edit rollback invariant multiple paths purchase">
+					<summary><span>06</span><strong>Transaction and Edit</strong><em>Commit several changes together</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A transaction is an isolated working copy for several related changes inside one profile.</p></div>
+						<div><span>What happens</span><p>The callback edits the copy. Callback failure, cancellation or invalid data discards it; success validates and swaps the completed copy into live session memory.</p></div>
+						<div><span>Good for</span><p>Use it for shop purchases, crafting, equipping, reward claims and any action where all profile changes must succeed or none should.</p></div>
+						<div><span>Watch out</span><p>A local transaction is not a DataStore write and cannot atomically commit several different keys.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="named lock withlocktransaction local concurrency inventory trade race">
+					<summary><span>07</span><strong>Named locks and lock transactions</strong><em>Coordinate local systems</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A named lock prevents two systems in the same server process from editing the same logical resource simultaneously.</p></div>
+						<div><span>What happens</span><p><code>WithLockTransaction</code> holds the name, edits an isolated copy and commits only after the callback succeeds. Multi-session helpers acquire locks in deterministic key order.</p></div>
+						<div><span>Good for</span><p>Use it when inventory, crafting and trade code could race over one active session or several locally open participants.</p></div>
+						<div><span>Watch out</span><p>Local locks do not protect another server and do not make later writes to separate DataStore keys atomic.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="dirty autosave save checkpoint release write receipt revision datarevision">
+					<summary><span>08</span><strong>Dirty state, autosave, checkpoint and release</strong><em>Decide when to save</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Dirty state means gameplay data changed since the last confirmed commit. Autosave persists it later; checkpoint persists it now; release performs the final save and clears the lease.</p></div>
+						<div><span>What happens</span><p>Autosaves are staggered and concurrency-limited. Clean sessions skip unnecessary data writes until lease renewal is due. Release saves final data and unlocks in one write.</p></div>
+						<div><span>Good for</span><p>Rely on autosave for routine progress. Checkpoint before teleport or a risky external flow. Release when ownership must end.</p></div>
+						<div><span>Watch out</span><p>A manual save is not needed after every mutation. <code>Revision</code> counts commits; <code>DataRevision</code> counts persisted gameplay-data changes.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="write receipt ambiguous response retry duplicate mutation token">
+					<summary><span>09</span><strong>Write receipts</strong><em>Recover ambiguous save responses</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A write receipt is a bounded record of a unique commit token and whether that commit changed gameplay data.</p></div>
+						<div><span>What happens</span><p>If DataStore commits a write but the response is lost, retrying with the same token recognizes the completed commit instead of applying its transform twice.</p></div>
+						<div><span>Good for</span><p>VirtualStore uses this automatically for saves, releases and updates where a network failure can make the result uncertain.</p></div>
+						<div><span>Watch out</span><p>Receipts are intentionally bounded. They prevent short-term retry ambiguity, not permanent business-request idempotency.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="durable operation queue handler disconnect crash teleport crate matchmaking reward">
+					<summary><span>10</span><strong>Durable operations</strong><em>Finish work after disconnect</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A durable operation is uniquely identified pending work stored inside the target profile.</p></div>
+						<div><span>What happens</span><p>A deterministic non-yielding handler mutates profile data. The result receipt is committed with the same single-profile write, so retries can see whether it already applied.</p></div>
+						<div><span>Good for</span><p>Use it for developer products, crate outcomes, matchmaking rewards, offline grants and work that must survive disconnects, teleports or temporary outages.</p></div>
+						<div><span>Watch out</span><p>Do not perform external side effects or random selection inside a retryable handler. Decide random outcomes before queueing and include them in the payload.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="operation receipt dedupe tombstone attempt ttl dead letter failure replay">
+					<summary><span>11</span><strong>Operation receipts, dedupe, TTL and dead letters</strong><em>Keep failed work for repair</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A receipt records terminal operation status. Dedupe tombstones remember completed IDs longer. TTL expires stale work. Dead letters retain bounded failed-operation details.</p></div>
+						<div><span>What happens</span><p>Attempts, timestamps and errors update during retries. The attempt limit or TTL produces a Failed receipt and dead letter. Reusing a retained ID returns its receipt instead of applying again.</p></div>
+						<div><span>Good for</span><p>Use status and dead letters to drive purchase retry, compensation, incident investigation and admin repair.</p></div>
+						<div><span>Watch out</span><p>All ledgers are bounded. Never reuse operation IDs. Replay a failed operation under a new globally unique ID.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="replication client public path nested snapshot patch owner only observe hud">
+					<summary><span>12</span><strong>Owner-only client replication</strong><em>Choose client-visible fields</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Replication is a read-only client mirror containing only server-approved public paths or transformed output.</p></div>
+						<div><span>What happens</span><p>The owner receives a revisioned initial snapshot, then path patches from safe mutations. A missed revision requests a fresh snapshot.</p></div>
+						<div><span>Good for</span><p>Use it for HUD currency, settings, level, XP, inventory views and quest progress that the owning client must display.</p></div>
+						<div><span>Watch out</span><p>Publishing a parent can expose every child. Prefer narrow nested paths and never expose receipts, escrow, anti-cheat flags or admin data.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="validation schema migration version corrupt invalid data reconcile">
+					<summary><span>13</span><strong>Validation and schema migrations</strong><em>Upgrade old profiles safely</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Validation rejects values Roblox cannot safely store. Migrations convert an older known schema into the current schema one destination version at a time.</p></div>
+						<div><span>What happens</span><p>Open and offline update run required migrations, reconcile template defaults and validate before allowing the new record to commit.</p></div>
+						<div><span>Good for</span><p>Use migrations when renaming fields, changing inventory formats, splitting values or introducing a new persistent model.</p></div>
+						<div><span>Watch out</span><p>Migration is not automatic corruption repair. Each migration must be deterministic and tested against real older shapes.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="adapter datastore memory testing failure injection offline test">
+					<summary><span>14</span><strong>DataStore and Memory adapters</strong><em>Test without live DataStore</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>An adapter implements storage requests. The production adapter talks to Roblox DataStore; the memory adapter provides deterministic local storage for tests.</p></div>
+						<div><span>What happens</span><p>Core lifecycle and correctness code call the adapter contract instead of directly depending on live DataStore behavior.</p></div>
+						<div><span>Good for</span><p>Use the memory adapter for automated tests, retry simulation, lease conflicts, operation failure cases and scheduler benchmarks.</p></div>
+						<div><span>Watch out</span><p>A memory benchmark does not measure Roblox network speed. Published-server comparisons need identical real conditions.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="budget scheduler diagnostics critical state latency retry autosave performance">
+					<summary><span>15</span><strong>Budgets, scheduler, diagnostics and critical state</strong><em>Watch budgets and failures</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Budget waiting controls request timing, the scheduler spreads autosaves, diagnostics count system behavior and critical state summarizes repeated recent issues.</p></div>
+						<div><span>What happens</span><p>Requests wait for their correct Roblox budget. Autosaves use capped concurrency. Metrics record requests, retries, waits, latency, failures, restores, deletes and lease loss.</p></div>
+						<div><span>Good for</span><p>Use diagnostics for dashboards, alerting, load testing and deciding whether trading or purchases should temporarily degrade during an incident.</p></div>
+						<div><span>Watch out</span><p>Higher concurrency is not automatically faster. Measure diagnostics before changing safety-oriented defaults.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="messaging service handoff notification optional correctness polling lease timeout">
+					<summary><span>16</span><strong>MessagingService handoff</strong><em>A useful hint, not a guarantee</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>MessagingService sends hints that a waiting server wants a lease or that new operation work exists.</p></div>
+						<div><span>What happens</span><p>A message can encourage faster save, release or processing, while DataStore records, polling, autosave and lease timeout remain the correctness path.</p></div>
+						<div><span>Good for</span><p>Enable it to reduce reconnect, teleport handoff and offline-delivery latency across servers.</p></div>
+						<div><span>Watch out</span><p>Messaging delivery is not guaranteed. Code must remain correct when every message is dropped.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="version history view restore delete tombstone rollback recovery">
+					<summary><span>17</span><strong>Version history, restore and delete</strong><em>Recover or remove exact records</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Version APIs inspect historical DataStore versions, restore one as a new latest version or create a deletion tombstone after exclusive ownership.</p></div>
+						<div><span>What happens</span><p>Restore and delete reject active foreign leases. Restore creates another version, preserving the state that existed before restoration.</p></div>
+						<div><span>Good for</span><p>Use it for administrator rollback, investigating lost progress and deliberate privacy/deletion workflows.</p></div>
+						<div><span>Watch out</span><p>Restore is not safe while another server actively owns the profile, and Roblox controls how long old versions remain available.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="admin repair authorize inspect metadata pending operations dead letters force release compact">
+					<summary><span>18</span><strong>Authorized admin repair</strong><em>Inspect and repair exact keys</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Admin repair is a server-only, key-based set of inspection and recovery methods protected by an explicit <code>AdminAuthorize</code> callback.</p></div>
+						<div><span>What happens</span><p>Authorized tooling can inspect metadata, list pending work and dead letters, cancel or fail work, requeue with a new ID, compact ledgers or force-release an exact inspected lease token.</p></div>
+						<div><span>Good for</span><p>Use it from trusted incident tooling when normal retry and lease timeout are not enough.</p></div>
+						<div><span>Watch out</span><p>Never expose a generic repair remote to clients. Dead-letter payloads and lease tokens contain sensitive operational data.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="patterns cooldown daily reward purchase receipt offline timed effect optional removable">
+					<summary><span>19</span><strong>Optional gameplay patterns</strong><em>Ready-made helpers you can remove</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>Patterns are removable gameplay modules for cooldowns, daily rewards, purchase receipts, offline rewards and timed effects.</p></div>
+						<div><span>What happens</span><p>They prepare template fields and deterministic handlers, then call the same public transactions and durable operations as custom game code.</p></div>
+						<div><span>Good for</span><p>Use them to ship common systems quickly without designing their retry and idempotency behavior from scratch.</p></div>
+						<div><span>Watch out</span><p>Patterns are not correctness-critical core. They can be deleted, and they never replace leases, persistence or operation receipts.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="ordered index datastore leaderboard rank top sorted projection integer cache">
+					<summary><span>20</span><strong>OrderedIndex leaderboards</strong><em>Keep a sortable copy</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>An optional OrderedDataStore extension that stores integer projections and reads sorted pages without using VirtualStore's profile envelope.</p></div>
+						<div><span>What happens</span><p>Writes use OrderedDataStore budgets and bounded retries. Top queries page through sorted results; rank lookup scans only up to a configured maximum.</p></div>
+						<div><span>Good for</span><p>Use it for persistent scoreboards, fastest times, season points and other sortable integer read models.</p></div>
+						<div><span>Watch out</span><p>The projection is not atomic with the source profile and may lag. Never use it as the authoritative source for currency, purchases or trades.</p></div>
+					</div>
+				</details>
+
+				<details class="concept-item" data-search="trade saga coordinator escrow multi key atomic compensation journal auction guild bank">
+					<summary><span>21</span><strong>Trade saga, journal and escrow</strong><em>Recover multi-profile trades</em></summary>
+					<div class="concept-body">
+						<div><span>Short version</span><p>A saga is a persistent multi-step workflow used because Roblox cannot atomically commit several DataStore keys. A journal records progress; escrow reserves assets before settlement.</p></div>
+						<div><span>What happens</span><p>The coordinator writes pending state, queues unique idempotent operations for each profile, observes receipts and retries, compensates or marks NeedsRepair when settlement cannot finish.</p></div>
+						<div><span>Good for</span><p>Use it for player trades, auctions, guild banks, ownership transfers and any valuable cross-profile economy action.</p></div>
+						<div><span>Watch out</span><p><code>withLockTransactions</code> only protects local memory. It is not a substitute for a persistent coordinator across DataStore keys.</p></div>
+					</div>
+				</details>
+			</div>
+		</section>
+
+		<section id="guarantees" class="section reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Safety notes</p>
+					<h2>What VirtualStore protects, and what it cannot.</h2>
+				</div>
+				<p>
+					Inside one DataStore key, VirtualStore can make useful guarantees. Across several keys
+					or external services, Roblox does not give us a real transaction.
+				</p>
+			</div>
+
+			<div class="guarantee-grid">
+				<article class="guarantee-panel positive">
+					<header><span>Handled by VirtualStore</span><strong>Inside one profile</strong></header>
+					<ul>
+						<li>One active lease owner per key inside <code>UpdateAsync</code>.</li>
+						<li>Stale servers cannot overwrite a newer owner.</li>
+						<li>Final save and lease release share one atomic write.</li>
+						<li>Safe transactions roll back callback failures in memory.</li>
+						<li>Durable operation data and receipts commit together.</li>
+						<li>Write receipts recover ambiguous post-write responses.</li>
+						<li>Client replicas are owner-only, revisioned and path-filtered.</li>
+						<li>Admin repair fails closed without explicit authorization.</li>
+					</ul>
+				</article>
+
+				<article class="guarantee-panel boundary">
+					<header><span>You must design for this</span><strong>Outside one profile</strong></header>
+					<ul>
+						<li>Atomic commits across multiple DataStore keys.</li>
+						<li>Permanent idempotency after bounded ledgers prune old IDs.</li>
+						<li>Recovery of unsaved RAM-only changes after a process crash.</li>
+						<li>Instant cross-server visibility or MessagingService delivery.</li>
+						<li>Security of client-exposed admin capabilities or transforms.</li>
+						<li>Rollback for direct mutations made outside strict mode.</li>
+						<li>Automatic repair of every incomplete external workflow.</li>
+						<li>Global scanning of every DataStore key.</li>
+					</ul>
+				</article>
+			</div>
+
+			<p class="callout">
+				<strong>Revision means commit count.</strong>
+				Use <code>Metadata.DataRevision</code> when only persisted gameplay-data changes matter.
+			</p>
+		</section>
+
+		<section id="recovery" class="section band reveal">
+			<div class="section-heading">
+				<p class="kicker">When something fails</p>
+				<h2>What the library does next.</h2>
+			</div>
+
+			<div class="timeline">
+				<article>
+					<span>Load outage</span>
+					<h3>Do not open blank data</h3>
+					<p>The load is retried with the same token. If the stored profile cannot be read safely, the player is not allowed into gameplay.</p>
+				</article>
+				<article>
+					<span>Save response lost</span>
+					<h3>Check whether it already saved</h3>
+					<p>A recent write receipt lets a retry recognize a commit whose response was lost.</p>
+				</article>
+				<article>
+					<span>Player disconnects</span>
+					<h3>Leave the reward pending</h3>
+					<p>Durable work remains in the profile so a later session can finish it.</p>
+				</article>
+				<article>
+					<span>Repeated failure</span>
+					<h3>Stop retrying and report it</h3>
+					<p>After the retry limit, the operation becomes Failed and its details are kept for repair.</p>
+				</article>
+			</div>
+
+			<div class="code-shell wide-code">
+				<div class="code-toolbar">
+					<span>Durable reward after matchmaking or teleport</span>
+					<button class="copy-button" type="button" data-copy='Data:DeliverAsync(userId, `match:${matchId}:reward`, "GrantMatchReward", {\n    Coins = 250,\n})'>Copy</button>
+				</div>
+<pre><code>Data:<span class="tok-call">DeliverAsync</span>(userId, <span class="tok-string">`match:${matchId}:reward`</span>, <span class="tok-string">"GrantMatchReward"</span>, {
+    Coins = <span class="tok-number">250</span>,
+})</code></pre>
+			</div>
+		</section>
+
+		<section id="replication" class="section reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Client data</p>
+					<h2>Send the UI only what it needs.</h2>
+				</div>
+				<p>
+					Mark exact paths as public. If you publish <code>{"Wallet", "Coins"}</code>, the client
+					does not receive reserved currency, trade escrow, or other fields beside it.
+				</p>
+			</div>
+
+			<div class="replica-demo">
+				<div class="data-tree">
+					<div class="tree-head">Server profile</div>
+					<div class="tree-line"><span>Wallet</span></div>
+					<div class="tree-line depth"><span>Coins</span><em class="public-tag">public</em></div>
+					<div class="tree-line depth private"><span>ReservedCoins</span><em>private</em></div>
+					<div class="tree-line depth private"><span>TradeEscrow</span><em>private</em></div>
+					<div class="tree-line"><span>Progress</span></div>
+					<div class="tree-line depth"><span>Level</span><em class="public-tag">public</em></div>
+					<div class="tree-line depth"><span>XP</span><em class="public-tag">public</em></div>
+					<div class="tree-line private"><span>AdminNotes</span><em>private</em></div>
+				</div>
+
+				<div class="replica-wire" aria-hidden="true">
+					<span></span><span></span><span></span>
+					<strong>revisioned patches</strong>
+				</div>
+
+				<div class="data-tree client-tree">
+					<div class="tree-head">Owner client</div>
+					<div class="tree-line"><span>Wallet</span></div>
+					<div class="tree-line depth"><span>Coins</span><em>240</em></div>
+					<div class="tree-line"><span>Progress</span></div>
+					<div class="tree-line depth"><span>Level</span><em>7</em></div>
+					<div class="tree-line depth"><span>XP</span><em>65</em></div>
+				</div>
+			</div>
+
+			<div class="two-code">
+				<div class="code-shell">
+					<div class="code-toolbar"><span>Server whitelist</span></div>
+<pre><code>Replication = {
+    Paths = {
+        {<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>},
+        {<span class="tok-string">"Progress"</span>, <span class="tok-string">"Level"</span>},
+        {<span class="tok-string">"Progress"</span>, <span class="tok-string">"XP"</span>},
+    },
+}</code></pre>
+				</div>
+				<div class="code-shell">
+					<div class="code-toolbar"><span>Client observer</span></div>
+<pre><code>Data:<span class="tok-call">Observe</span>({<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>}, <span class="tok-key">function</span>(coins)
+    coinsLabel.Text = coins
+<span class="tok-key">end</span>)</code></pre>
+				</div>
+			</div>
+		</section>
+
+		<section id="ordered-index" class="section band reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Leaderboards</p>
+					<h2>Keep the real score in the profile.</h2>
+				</div>
+				<p>
+					OrderedIndex copies a saved integer into OrderedDataStore so you can sort it. If that copy
+					is late or fails, the player's real score is still safe in VirtualStore.
+				</p>
+			</div>
+
+			<div class="projection-model">
+				<div class="projection-source">
+					<span>Source of truth</span>
+					<strong>VirtualStore profile</strong>
+					<p>This is the value your game trusts when granting rewards or checking purchases.</p>
+					<code>Data.Wallet.Coins = 1250</code>
+				</div>
+				<div class="projection-arrow" aria-hidden="true"><span>successful save</span><strong>project</strong></div>
+				<div class="projection-target">
+					<span>Sorted read model</span>
+					<strong>OrderedIndex</strong>
+					<p>This copy exists only so the game can show top lists and look up nearby ranks.</p>
+					<code>"820815974" = 1250</code>
+				</div>
+			</div>
+
+			<div class="leaderboard-flow">
+				<div><span>1</span><strong>Mutate profile</strong><p>Gameplay uses <code>Data:Add</code> or a transaction. OrderedDataStore is not touched yet.</p></div>
+				<div><span>2</span><strong>Confirm save</strong><p>Session save succeeds, proving the authoritative profile value reached DataStore.</p></div>
+				<div><span>3</span><strong>Project integer</strong><p><code>BindSession</code> writes the selected path using OrderedDataStore budgets and bounded retries.</p></div>
+				<div><span>4</span><strong>Read sorted view</strong><p><code>GetTopAsync</code> returns ranked entries; <code>GetRankAsync</code> scans only within its configured bound.</p></div>
+			</div>
+
+			<div class="two-code">
+				<div class="code-shell">
+					<div class="code-toolbar"><span>Beginner: project after successful saves</span></div>
+<pre><code><span class="tok-key">local</span> Coins = VirtualStore.OrderedIndex.<span class="tok-call">new</span>({
+    Name = <span class="tok-string">"CoinsLeaderboard"</span>,
+    Ascending = <span class="tok-key">false</span>,
+    Settings = { CacheTTL = <span class="tok-number">15</span> },
+})
+
+Data.Loaded:<span class="tok-call">Connect</span>(<span class="tok-key">function</span>(player, _profile, session)
+    Coins:<span class="tok-call">BindSession</span>(
+        session,
+        <span class="tok-call">tostring</span>(player.UserId),
+        {<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>},
+        {ProjectNow = <span class="tok-key">true</span>}
+    )
+<span class="tok-key">end</span>)</code></pre>
+				</div>
+				<div class="code-shell">
+					<div class="code-toolbar"><span>Advanced: top list and bounded rank</span></div>
+<pre><code><span class="tok-key">local</span> top, topError = Coins:<span class="tok-call">GetTopAsync</span>(<span class="tok-number">100</span>, {
+    MinValue = <span class="tok-number">1</span>,
+    PageSize = <span class="tok-number">50</span>,
+})
+
+<span class="tok-key">local</span> rank, rankError = Coins:<span class="tok-call">GetRankAsync</span>(
+    <span class="tok-call">tostring</span>(player.UserId),
+    {MaxScan = <span class="tok-number">1000</span>}
+)
+
+<span class="tok-key">if</span> rankError and rankError.Code == <span class="tok-string">"RankScanLimit"</span> <span class="tok-key">then</span>
+    print(<span class="tok-string">"Player is outside the scanned leaderboard range"</span>)
+<span class="tok-key">end</span></code></pre>
+				</div>
+			</div>
+
+			<p class="callout ordered-warning">
+				<strong>Do not add Coins in two places.</strong>
+				Change profile Coins in VirtualStore, then copy the final value with <code>SetAsync</code>, <code>ProjectAsync</code> or <code>BindSession</code>. <code>IncrementAsync</code> is for a separate counter owned by OrderedDataStore. It is not retried automatically because a lost response could otherwise add the value twice.
+			</p>
+		</section>
+
+		<section id="patterns" class="section band reveal">
+			<div class="section-heading">
+				<p class="kicker">Optional helpers</p>
+				<h2>Common systems you can keep or remove.</h2>
+				<p class="section-summary">These helpers use the public API. Delete them when your game does not need them; the core library keeps working.</p>
+			</div>
+
+			<div class="pattern-list">
+				<article><span>01</span><div><h3>Cooldowns</h3><p>Saved timestamps and isolated session transactions for local gameplay gates.</p></div><code>Data.Cooldowns</code></article>
+				<article><span>02</span><div><h3>Daily rewards</h3><p>UTC day numbers, deterministic IDs and server-selected rewards.</p></div><code>Data.Daily</code></article>
+				<article><span>03</span><div><h3>Purchase receipts</h3><p>ProcessReceipt grants only after a durable operation reaches Applied.</p></div><code>Data.Purchases</code></article>
+				<article><span>04</span><div><h3>Offline rewards</h3><p>Server-calculated duration and idempotent reward delivery.</p></div><code>Data.Offline</code></article>
+				<article><span>05</span><div><h3>Timed effects</h3><p>Refresh, extend, stack, ignore and replace with durable queue helpers.</p></div><code>Data.Effects</code></article>
+			</div>
+		</section>
+
+		<section id="trade" class="section reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Trading</p>
+					<h2>A safe trade needs a recovery plan.</h2>
+				</div>
+				<p>
+					Roblox cannot save two player profiles in one atomic write. For valuable trades, keep
+					a journal, reserve the offered assets, and make every settlement step safe to retry.
+				</p>
+			</div>
+
+			<div class="trade-flow">
+				<div><span>1</span><strong>Negotiate</strong><p>Both offers are server validated. Changing an offer clears acceptance.</p></div>
+				<div><span>2</span><strong>Reserve</strong><p>Each profile moves offered coins into durable escrow.</p></div>
+				<div><span>3</span><strong>Settle</strong><p>Idempotent operations release escrow and grant incoming coins.</p></div>
+				<div><span>4</span><strong>Recover</strong><p>Incomplete workflows remain visible as pending or NeedsRepair.</p></div>
+			</div>
+		</section>
+
+		<section id="architecture" class="section band reveal">
+			<div class="section-heading">
+				<p class="kicker">Inside the package</p>
+				<h2>Where the main responsibilities live.</h2>
+			</div>
+
+			<div class="architecture">
+				<div class="architecture-root">
+					<span>Public facade</span>
+					<strong>VirtualStore.luau</strong>
+					<p>Factories, constants and dependency wiring. No Store method implementations.</p>
+				</div>
+				<div class="architecture-grid">
+					<article><strong>Store</strong><span>leases, commits, versions, repair, close</span></article>
+					<article><strong>Session</strong><span>transactions, locks, save, release</span></article>
+					<article><strong>RecordCodec</strong><span>envelopes, migrations, validation, receipts</span></article>
+					<article><strong>OperationLedger</strong><span>retry, dedupe, dead letters, compaction</span></article>
+					<article><strong>AutoSaveScheduler</strong><span>staggering and concurrency</span></article>
+					<article><strong>Diagnostics</strong><span>metrics and critical state</span></article>
+					<article><strong>Replication</strong><span>owner-only snapshots and patches</span></article>
+					<article><strong>OrderedIndex</strong><span>optional integer projections and sorted queries</span></article>
+					<article><strong>Adapters</strong><span>DataStore and deterministic memory tests</span></article>
+				</div>
+			</div>
+		</section>
+
+		<section id="workflows" class="section reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Examples</p>
+					<h2>How the pieces work together.</h2>
+				</div>
+				<p>
+					These are the situations that usually cause data bugs. Each walkthrough shows the
+					normal path and what happens when a request, server, or player disappears.
+				</p>
+			</div>
+
+			<div class="workflow-stack">
+				<article class="workflow">
+					<header><span>Routine profile</span><h3>Player joins, earns coins and leaves</h3><code>players + Add + autosave + release</code></header>
+					<div class="workflow-steps">
+						<div><span>1</span><strong>Open</strong><p><code>VirtualStore.players</code> receives PlayerAdded and repeatedly attempts to claim <code>Player_&lt;UserId&gt;</code> with one stable lease token.</p></div>
+						<div><span>2</span><strong>Become ready</strong><p>After migration, reconciliation and validation, state becomes <code>Ready</code>. Gameplay may now read or mutate the profile.</p></div>
+						<div><span>3</span><strong>Mutate</strong><p><code>Data:Add(player, "Coins", 100)</code> validates the new number, marks dirty and emits the <code>Coins</code> path for replication.</p></div>
+						<div><span>4</span><strong>Persist</strong><p>Autosave commits dirty data later. On leave, release saves final data and clears the lease in the same single-key write.</p></div>
+					</div>
+					<footer><strong>Recovery:</strong> temporary load errors retry; save failures keep the Session active; failed release does not pretend ownership ended.</footer>
+				</article>
+
+				<article class="workflow">
+					<header><span>Atomic profile action</span><h3>Player purchases an inventory item</h3><code>Edit / Transaction</code></header>
+					<div class="workflow-steps">
+						<div><span>1</span><strong>Validate request</strong><p>Server code selects the item and trusted price. The client only requests an action; it does not author currency or reward values.</p></div>
+						<div><span>2</span><strong>Edit a copy</strong><p>The transaction checks balance, subtracts coins and inserts the item into an isolated working copy.</p></div>
+						<div><span>3</span><strong>Commit together</strong><p>If any check fails, return <code>VirtualStore.Cancel</code>. Nothing changes. If validation succeeds, all profile changes enter live memory together.</p></div>
+						<div><span>4</span><strong>Replicate paths</strong><p>The owner client receives the changed public currency and inventory paths, while private purchase metadata remains server-only.</p></div>
+					</div>
+					<footer><strong>Use this for:</strong> shops, crafting, equipping, upgrade costs and any action that changes several fields in one profile.</footer>
+				</article>
+
+				<article class="workflow">
+					<header><span>Durable delivery</span><h3>Crate result must survive disconnect</h3><code>DeliverAndWaitAsync + receipt</code></header>
+					<div class="workflow-steps">
+						<div><span>1</span><strong>Choose outcome</strong><p>The server selects the random reward before queueing. The stable outcome enters the operation payload.</p></div>
+						<div><span>2</span><strong>Queue unique work</strong><p>A globally unique request ID creates pending work inside the profile. Reusing a retained ID returns the existing status.</p></div>
+						<div><span>3</span><strong>Apply once</strong><p>The deterministic handler consumes the key and grants the selected reward. Data and the Applied receipt commit together.</p></div>
+						<div><span>4</span><strong>Present final result</strong><p>Only show the final opening after the Applied receipt. A disconnect leaves pending work available for later processing.</p></div>
+					</div>
+					<footer><strong>Recovery:</strong> bounded retries become a Failed receipt and dead letter; compensation or admin repair can then act on visible failure.</footer>
+				</article>
+
+				<article class="workflow">
+					<header><span>Temporary outage</span><h3>DataStore fails while the player is entering</h3><code>stable-token retry + fail closed</code></header>
+					<div class="workflow-steps">
+						<div><span>1</span><strong>Do not create blanks</strong><p>A failed request never causes VirtualStore to open the template as if no stored record existed.</p></div>
+						<div><span>2</span><strong>Retry one claim</strong><p>Load attempts reuse the same token, allowing an ambiguous successful lease claim to be recognized safely.</p></div>
+						<div><span>3</span><strong>Expose state</strong><p>The player facade moves through <code>Loading</code> and <code>Retrying</code>. Game code waits for <code>Ready</code> instead of guessing.</p></div>
+						<div><span>4</span><strong>Fail closed</strong><p>After the configured attempts, loading becomes <code>Failed</code> and the default player facade kicks with a clear retry message.</p></div>
+					</div>
+					<footer><strong>Why:</strong> letting a player continue with blank data during an outage is much more dangerous than refusing the session.</footer>
+				</article>
+
+				<article class="workflow">
+					<header><span>Multi-key economy</span><h3>Two players trade valuable assets</h3><code>locks + journal + escrow + saga</code></header>
+					<div class="workflow-steps">
+						<div><span>1</span><strong>Negotiate locally</strong><p>Server-authoritative offers and deterministic local locks prevent concurrent same-server edits while both players accept.</p></div>
+						<div><span>2</span><strong>Write pending journal</strong><p>A persistent trade ID records participants, offers and workflow status before settlement begins.</p></div>
+						<div><span>3</span><strong>Reserve then settle</strong><p>Unique per-profile durable operations move assets to escrow, then release outgoing value and grant incoming value.</p></div>
+						<div><span>4</span><strong>Recover incomplete work</strong><p>The coordinator observes receipts, retries missing steps and marks permanent failures for compensation or NeedsRepair.</p></div>
+					</div>
+					<footer><strong>Boundary:</strong> Roblox has no multi-key atomic commit. A local multi-session transaction alone is never enough for a production trade.</footer>
+				</article>
+			</div>
+		</section>
+
+		<section id="reference" class="section docs-section reveal">
+			<div class="docs-header">
+				<div>
+					<p class="kicker">API reference</p>
+					<h2>Public methods, with context.</h2>
+				</div>
+				<label class="search-box">
+					<span>Filter reference</span>
+					<input id="apiSearch" type="search" placeholder="Try: offline, save, dead letter, observe" />
+				</label>
+			</div>
+
+			<div class="reference-guide">
+				<div><span>For most games</span><strong>Start with <code>VirtualStore.players</code>.</strong><p>Keep one shared DataService, wait until the player is ready, then use <code>Add</code>, <code>Set</code> or <code>Edit</code>. Autosave and release handle the routine saves.</p></div>
+				<div><span>When you need more control</span><strong>Use the API that owns the record.</strong><p>Session methods are for loaded profiles. Store methods are for exact offline keys. Durable operations are for work that must resume later.</p></div>
+				<div><span>On every failure</span><strong>Check the second return value.</strong><p>Storage and mutation calls usually return <code>valueOrSuccess, virtualError</code>. Stop the action and log the error code rather than assuming it worked.</p></div>
+			</div>
+
+			<div class="api-groups" id="apiGroups">
+				<article class="api-group" data-search="player facade players wait get add edit deliver checkpoint replication diagnostics close">
+					<header><span>Player facade</span><strong>VirtualStore.players</strong></header>
+					<details class="api-example" open="open">
+						<summary><span>How to use it</span><strong>Normal server gameplay</strong></summary>
+						<div class="api-example-body">
+<pre><code><span class="tok-key">local</span> ServerScriptService = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ServerScriptService"</span>)
+<span class="tok-key">local</span> Data = <span class="tok-call">require</span>(ServerScriptService.DataService)
+
+<span class="tok-key">local</span> _, loadError = Data:<span class="tok-call">Wait</span>(player, <span class="tok-number">5</span>)
+<span class="tok-key">if</span> loadError <span class="tok-key">then</span>
+    warn(loadError.Code, loadError.Message)
+    <span class="tok-key">return</span>
+<span class="tok-key">end</span>
+
+<span class="tok-key">local</span> ok, mutationError = Data:<span class="tok-call">Add</span>(
+    player, {<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>}, <span class="tok-number">100</span>,
+    {Reason = <span class="tok-string">"QuestReward"</span>, Source = <span class="tok-string">"QuestService"</span>}
+)
+<span class="tok-key">if not</span> ok <span class="tok-key">then</span> warn(mutationError.Code) <span class="tok-key">end</span></code></pre>
+							<div class="api-notes">
+								<p><strong>Beginner:</strong> this is the default surface for player data. Do not manually open another Store for the same player key.</p>
+								<p><strong>Advanced:</strong> wrap this facade inside domain services so RemoteEvents cannot call arbitrary paths or choose reward amounts.</p>
+							</div>
+						</div>
+					</details>
+					<div class="method"><code>Wait / Await</code><p>Waits until a player's load state reaches Ready or fails. Use before gameplay reads profile data.</p></div>
+					<div class="method"><code>IsLoaded / GetSession</code><p>Checks readiness or returns the active underlying Session for advanced server code.</p></div>
+					<div class="method"><code>Get / GetPath</code><p>Reads the complete profile or one string/nested-array path without exposing mutation.</p></div>
+					<div class="method"><code>Add / Increment</code><p>Adds a number at one path. Use for currency, XP and numeric counters.</p></div>
+					<div class="method"><code>Set / Patch</code><p>Replaces one path or computes its next value with a callback.</p></div>
+					<div class="method"><code>Insert / Remove</code><p>Safely changes an array-like path such as inventory or unlocked rewards.</p></div>
+					<div class="method"><code>Edit / Update</code><p>Runs a one-profile transaction for several related changes and complete rollback on failure.</p></div>
+					<div class="method"><code>WithLock / WithLockTransaction</code><p>Coordinates a named local resource; the transactional form also rolls back callback failures.</p></div>
+					<div class="method"><code>DeliverAsync</code><p>Queues one durable operation for an online player or offline UserId and returns without waiting for completion.</p></div>
+					<div class="method"><code>DeliverAndWaitAsync / GetDeliveryAsync</code><p>Waits for or checks the operation receipt when gameplay must know the terminal result.</p></div>
+					<div class="method"><code>CheckpointAsync / SaveAsync</code><p>Persists current memory while keeping the player session active. Checkpoint communicates a deliberate durability boundary.</p></div>
+					<div class="method"><code>ReplicateNow</code><p>Forces a fresh public snapshot when custom server code needs immediate replica refresh.</p></div>
+					<div class="method"><code>ReleaseAsync / CloseAsync</code><p>Releases one player or closes the entire facade and its underlying Store.</p></div>
+				</article>
+				<article class="api-group" data-search="store open view update versions restore delete operations diagnostics close admin repair">
+					<header><span>Core store</span><strong>VirtualStore.new</strong></header>
+					<details class="api-example">
+						<summary><span>How to use it</span><strong>Exact offline key update</strong></summary>
+						<div class="api-example-body">
+<pre><code><span class="tok-key">local</span> snapshot, updateError = Data.Store:<span class="tok-call">UpdateAsync</span>(
+    <span class="tok-string">"Player_123"</span>,
+    <span class="tok-key">function</span>(profile)
+        profile.Wallet.Coins += <span class="tok-number">250</span>
+    <span class="tok-key">end</span>
+)
+
+<span class="tok-key">if</span> updateError <span class="tok-key">then</span>
+    warn(updateError.Code, updateError.Message)
+<span class="tok-key">end</span></code></pre>
+							<div class="api-notes">
+								<p><strong>Use Store methods when:</strong> you know the exact key and no local active Session should own the edit.</p>
+								<p><strong>Critical rule:</strong> offline update transforms may run multiple times and must not yield or perform external side effects.</p>
+							</div>
+						</div>
+					</details>
+					<div class="method"><code>OpenAsync</code><p>Claims a lease and creates one active Session. Use when this server needs ongoing ownership and writes.</p></div>
+					<div class="method"><code>ViewAsync</code><p>Reads a stored snapshot without claiming an active session. Use for read-only server tools and inactive records.</p></div>
+					<div class="method"><code>UpdateAsync</code><p>Atomically edits an offline record with no active lease. Its non-yielding transform may run more than once.</p></div>
+					<div class="method"><code>QueueOperationAsync</code><p>Writes uniquely identified durable work into a target profile, even while the owner is offline.</p></div>
+					<div class="method"><code>GetOperationAsync / AwaitOperationAsync</code><p>Reads or waits for operation status without exposing dead-letter payloads.</p></div>
+					<div class="method"><code>ListVersionsAsync / ViewVersionAsync / ViewAtTimeAsync</code><p>Inspects historical Roblox DataStore versions without changing the current record.</p></div>
+					<div class="method"><code>RestoreVersionAsync</code><p>Restores a historical snapshot as a new latest version after confirming no active lease blocks it.</p></div>
+					<div class="method"><code>GetDeleteConfirmation / DeleteAsync</code><p>Requires explicit exact confirmation, claims exclusive ownership and creates a deletion tombstone.</p></div>
+					<div class="method"><code>GetDiagnostics / IsCritical</code><p>Returns request metrics and whether recent issue thresholds place the Store in critical state.</p></div>
+					<div class="method"><code>GetSession / IsOpen / CloseAsync</code><p>Inspects local ownership or performs bounded shutdown release for all active sessions.</p></div>
+				</article>
+				<article class="api-group" data-search="session transaction set patch increment locks save checkpoint release metadata diff audit">
+					<header><span>Active session</span><strong>Session</strong></header>
+					<details class="api-example">
+						<summary><span>How to use it</span><strong>Validated multi-field purchase</strong></summary>
+						<div class="api-example-body">
+<pre><code><span class="tok-key">local</span> session = Data:<span class="tok-call">GetSession</span>(player)
+<span class="tok-key">if not</span> session <span class="tok-key">then return end</span>
+
+<span class="tok-key">local</span> ok, purchaseError = session:<span class="tok-call">Transaction</span>(
+    <span class="tok-key">function</span>(profile)
+        <span class="tok-key">if</span> profile.Wallet.Coins &lt; <span class="tok-number">500</span> <span class="tok-key">then</span>
+            <span class="tok-key">return</span> VirtualStore.Cancel
+        <span class="tok-key">end</span>
+        profile.Wallet.Coins -= <span class="tok-number">500</span>
+        table.<span class="tok-call">insert</span>(profile.Inventory, <span class="tok-string">"Sword"</span>)
+    <span class="tok-key">end</span>,
+    {Reason = <span class="tok-string">"Purchase"</span>, Source = <span class="tok-string">"ShopService"</span>}
+)</code></pre>
+							<div class="api-notes">
+								<p><strong>Beginner:</strong> prefer facade methods unless you need Session-specific signals, locks, tags or manual operation processing.</p>
+								<p><strong>Advanced:</strong> a Session is live memory under one lease. It is the correct surface for active-player domain services.</p>
+							</div>
+						</div>
+					</details>
+					<div class="method"><code>IsActive / GetState</code><p>Checks whether this Session still owns the lease and may safely mutate.</p></div>
+					<div class="method"><code>GetData / Get / Snapshot</code><p>Reads current memory or produces a copied snapshot for inspection.</p></div>
+					<div class="method"><code>GetMetadata / GetTag / SetTag</code><p>Reads public metadata or manages small record tags separate from gameplay data.</p></div>
+					<div class="method"><code>AddUserId / RemoveUserId</code><p>Associates Roblox user IDs with the record for GDPR-aware persistence.</p></div>
+					<div class="method"><code>Reconcile</code><p>Adds missing template defaults through the normal safe-mutation path.</p></div>
+					<div class="method"><code>Transaction</code><p>Edits a copied profile and commits only when callback and validation both succeed.</p></div>
+					<div class="method"><code>Set / Patch / Increment / Insert / Remove</code><p>Performs focused validated mutations and emits exact changed paths.</p></div>
+					<div class="method"><code>IsDirty / MarkDirty / MarkClean</code><p>Inspects or explicitly controls whether gameplay data requires another persistence commit.</p></div>
+					<div class="method"><code>GetDiff / GetAuditLog</code><p>Reads optional change details and recent audit entries when their settings are enabled.</p></div>
+					<div class="method"><code>WithLock / WithLockTransaction / IsLocked</code><p>Coordinates local logical resources; use the transactional form for rollback.</p></div>
+					<div class="method"><code>QueueOperationAsync / ProcessOperationsAsync</code><p>Queues work for this profile or explicitly processes pending operation handlers.</p></div>
+					<div class="method"><code>SaveAsync / CheckpointAsync / ReleaseAsync</code><p>Persists memory, marks a known durability boundary or ends lease ownership.</p></div>
+				</article>
+				<article class="api-group" data-search="admin repair inspect pending dead letters clear fail requeue force release compact">
+					<header><span>Authorized server tools</span><strong>Admin repair</strong></header>
+					<details class="api-example">
+						<summary><span>How to use it</span><strong>Inspect then repair one exact key</strong></summary>
+						<div class="api-example-body">
+<pre><code><span class="tok-key">local</span> ADMIN_CAPABILITY = {}
+<span class="tok-key">local</span> Store = VirtualStore.<span class="tok-call">new</span>({
+    Name = <span class="tok-string">"PlayerData"</span>,
+    Template = {},
+    AdminAuthorize = <span class="tok-key">function</span>(_action, _key, context)
+        <span class="tok-key">return</span> context == ADMIN_CAPABILITY
+    <span class="tok-key">end</span>,
+})
+
+<span class="tok-key">local</span> deadLetters = Store:<span class="tok-call">ListDeadLettersAsync</span>(
+    <span class="tok-string">"Player_123"</span>, ADMIN_CAPABILITY
+)</code></pre>
+							<div class="api-notes">
+								<p><strong>Safe order:</strong> inspect, understand, prepare a repair plan, then perform the smallest exact-key action.</p>
+								<p><strong>Never:</strong> send the capability, lease token, dead-letter payload or generic repair method through a client remote.</p>
+							</div>
+						</div>
+					</details>
+					<div class="method"><code>InspectMetadataAsync</code><p>Reads internal metadata, including the exact current lease token, after authorization.</p></div>
+					<div class="method"><code>ListPendingOperationsAsync</code><p>Lists unfinished durable work for one exact key.</p></div>
+					<div class="method"><code>ListDeadLettersAsync</code><p>Returns retained failure details and payloads allowed by the configured byte limit.</p></div>
+					<div class="method"><code>ClearPendingOperationAsync</code><p>Creates a terminal Cancelled receipt and dedupe tombstone instead of silently forgetting the ID.</p></div>
+					<div class="method"><code>ForceFailOperationAsync</code><p>Turns pending work into a Failed receipt and dead letter for deliberate investigation.</p></div>
+					<div class="method"><code>RequeueDeadLetterAsync</code><p>Queues the retained payload under a new globally unique ID while preserving the original failure.</p></div>
+					<div class="method"><code>ForceReleaseLeaseAsync</code><p>Releases only the exact inspected token; changed or guessed tokens are rejected.</p></div>
+					<div class="method"><code>CompactLedgersAsync</code><p>Normalizes and prunes bounded ledgers, but refuses to run while an active lease may need its receipts.</p></div>
+				</article>
+				<article class="api-group" data-search="ordered index datastore leaderboard top rank projection session bind cache integer diagnostics">
+					<header><span>Optional sorted projection</span><strong>VirtualStore.OrderedIndex</strong></header>
+					<details class="api-example">
+						<summary><span>How to use it</span><strong>Saved profile score leaderboard</strong></summary>
+						<div class="api-example-body">
+<pre><code><span class="tok-key">local</span> Leaderboard = VirtualStore.OrderedIndex.<span class="tok-call">new</span>({
+    Name = <span class="tok-string">"SeasonPoints"</span>,
+    Ascending = <span class="tok-key">false</span>,
+    Settings = {
+        CacheTTL = <span class="tok-number">15</span>,
+        MaxRankScan = <span class="tok-number">1000</span>,
+    },
+})
+
+Leaderboard:<span class="tok-call">BindSession</span>(
+    session,
+    <span class="tok-call">tostring</span>(player.UserId),
+    {<span class="tok-string">"Progress"</span>, <span class="tok-string">"SeasonPoints"</span>}
+)</code></pre>
+							<div class="api-notes">
+								<p><strong>Projection rule:</strong> the source profile remains authoritative. A leaderboard write can fail or temporarily lag without changing the player's real value.</p>
+								<p><strong>Rank rule:</strong> OrderedDataStore has no direct rank lookup. <code>GetRankAsync</code> scans sorted pages and stops at <code>MaxScan</code>.</p>
+							</div>
+						</div>
+					</details>
+					<div class="method"><code>new(config)</code><p>Creates an integer-only OrderedDataStore projection with sort direction, optional value range, retry, budget, cache and scan settings.</p></div>
+					<div class="method"><code>SetAsync / ProjectAsync</code><p>Replaces one projected integer value. Prefer this for profile-backed scores.</p></div>
+					<div class="method"><code>IncrementAsync</code><p>Atomically increments an independent OrderedDataStore counter. It makes one attempt and returns <code>AmbiguousIncrement</code> on failure because automatic retry could apply the increment twice.</p></div>
+					<div class="method"><code>GetAsync / RemoveAsync</code><p>Reads or removes one exact projected key.</p></div>
+					<div class="method"><code>GetTopAsync</code><p>Reads ranked sorted entries with optional direction, page size, minimum, maximum and cache bypass.</p></div>
+					<div class="method"><code>GetRankAsync</code><p>Scans sorted pages up to <code>MaxScan</code>; returns <code>RankScanLimit</code> when the key lies outside the bounded scan.</p></div>
+					<div class="method"><code>ProjectSessionAsync</code><p>Reads one integer path from a Session and immediately writes its projection.</p></div>
+					<div class="method"><code>BindSession</code><p>Projects the selected Session path after successful saves; optional <code>ProjectNow</code> writes the loaded value once.</p></div>
+					<div class="method"><code>ClearCache / GetDiagnostics</code><p>Invalidates local sorted-query cache or reads request, retry, budget, cache and query metrics.</p></div>
+					<div class="method"><code>OrderedIndex.MemoryAdapter</code><p>Provides deterministic integer storage, sorted pages, failure injection and budget control for tests.</p></div>
+				</article>
+				<article class="api-group" data-search="client replication get state await observe changed disconnect">
+					<header><span>Owner client</span><strong>VirtualStoreClient</strong></header>
+					<details class="api-example">
+						<summary><span>How to use it</span><strong>Read-only nested path observer</strong></summary>
+						<div class="api-example-body">
+<pre><code><span class="tok-key">local</span> ReplicatedStorage = game:<span class="tok-call">GetService</span>(<span class="tok-string">"ReplicatedStorage"</span>)
+<span class="tok-key">local</span> Client = <span class="tok-call">require</span>(
+    ReplicatedStorage:<span class="tok-call">WaitForChild</span>(<span class="tok-string">"VirtualStoreClient"</span>)
+)
+<span class="tok-key">local</span> Replica = Client.<span class="tok-call">connect</span>(<span class="tok-string">"PlayerData"</span>)
+
+Replica:<span class="tok-call">Await</span>()
+Replica:<span class="tok-call">Observe</span>({<span class="tok-string">"Wallet"</span>, <span class="tok-string">"Coins"</span>}, <span class="tok-key">function</span>(coins)
+    coinsLabel.Text = <span class="tok-call">tostring</span>(coins)
+<span class="tok-key">end</span>)</code></pre>
+							<div class="api-notes">
+								<p><strong>Client responsibility:</strong> display public data and send action requests. It never decides authoritative values or writes the replica.</p>
+								<p><strong>Server responsibility:</strong> expose exact safe paths and validate every RemoteEvent request independently.</p>
+							</div>
+						</div>
+					</details>
+					<div class="method"><code>connect(name)</code><p>Connects to one named owner-only replica channel installed by the server.</p></div>
+					<div class="method"><code>Await / GetState</code><p>Waits for the initial snapshot or inspects whether replica data is ready.</p></div>
+					<div class="method"><code>Get / GetPath</code><p>Reads public replicated data only. The returned replica is read-only.</p></div>
+					<div class="method"><code>Observe(path, callback)</code><p>Runs a callback when one top-level or nested public path changes.</p></div>
+					<div class="method"><code>Changed / StateChanged</code><p>Signals general replica patches and connection-state transitions.</p></div>
+					<div class="method"><code>Disconnect</code><p>Stops observers and releases local replica resources during custom teardown.</p></div>
+				</article>
+				<article class="api-group" data-search="signals error critical session opened closed operation queued applied retried failed changed saved released handoff">
+					<header><span>Server signals</span><strong>Observe lifecycle events</strong></header>
+					<details class="api-example">
+						<summary><span>How to use it</span><strong>Operational monitoring and changed paths</strong></summary>
+						<div class="api-example-body">
+<pre><code>Data.Store.CriticalStateChanged:<span class="tok-call">Connect</span>(<span class="tok-key">function</span>(critical, diagnostics)
+    PurchaseService.<span class="tok-call">SetEnabled</span>(<span class="tok-key">not</span> critical)
+    warn(<span class="tok-string">"Recent issues"</span>, diagnostics.RecentIssueCount)
+<span class="tok-key">end</span>)
+
+session.OnChanged:<span class="tok-call">Connect</span>(<span class="tok-key">function</span>(change)
+    print(change.Reason, change.Source, change.Paths)
+<span class="tok-key">end</span>)</code></pre>
+							<div class="api-notes">
+								<p><strong>Use signals for:</strong> monitoring, presentation updates, diagnostics and coordinating services after confirmed lifecycle events.</p>
+								<p><strong>Do not use signals as:</strong> a replacement for persisted receipts or a guaranteed cross-server event bus.</p>
+							</div>
+						</div>
+					</details>
+					<div class="method"><code>store.OnError</code><p>Receives structured Store errors for logging and operational monitoring.</p></div>
+					<div class="method"><code>CriticalStateChanged</code><p>Fires when recent issue thresholds enter or recover from critical state.</p></div>
+					<div class="method"><code>SessionOpened / SessionClosed</code><p>Reports local active-session lifecycle changes.</p></div>
+					<div class="method"><code>OperationQueued / Applied / Retried / Failed</code><p>Reports durable-work progress for diagnostics and workflow coordination.</p></div>
+					<div class="method"><code>session.OnChanged</code><p>Receives reason, source, timestamp, revision and always-included changed paths.</p></div>
+					<div class="method"><code>session.OnSaved / OnReleased / HandoffRequested</code><p>Reports confirmed persistence, ownership end and cross-server handoff hints.</p></div>
+				</article>
+			</div>
+		</section>
+
+		<section id="settings" class="section band reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Settings</p>
+					<h2>Change these only for a reason.</h2>
+				</div>
+				<p>
+					The defaults suit a normal game. Before changing one, check which request budget,
+					timeout, or record-size tradeoff it controls. Keep <code>LeaseTimeout</code> greater than twice <code>AutoSaveInterval</code>.
+				</p>
+			</div>
+
+			<div class="setting-groups">
+				<article class="setting-group">
+					<header><span>Persistence timing</span><strong>Routine write pressure</strong></header>
+					<div class="setting"><code>AutoSaveInterval = 60</code><p>Target seconds between routine session saves. Increase to reduce writes; decrease only after measuring budget pressure.</p></div>
+					<div class="setting"><code>AutoSaveCheckInterval = 1</code><p>How often the scheduler checks for due sessions. It does not mean every session writes each second.</p></div>
+					<div class="setting"><code>AutoSaveConcurrency = 2</code><p>Maximum simultaneous autosaves. Protects budgets during join spikes and large servers.</p></div>
+					<div class="setting"><code>AutoSaveRetryInterval = 10</code><p>How quickly failed autosaves become due again.</p></div>
+					<div class="setting"><code>LeaseTimeout = 180</code><p>How long ownership survives without renewal. Must exceed two autosave intervals.</p></div>
+				</article>
+				<article class="setting-group">
+					<header><span>Requests and shutdown</span><strong>Bound waiting and retries</strong></header>
+					<div class="setting"><code>OpenTimeout = 20</code><p>Maximum time an open waits for an active lease or storage progress before returning an error.</p></div>
+					<div class="setting"><code>RetryAttempts = 5</code><p>General bounded adapter request attempts before the operation returns failure.</p></div>
+					<div class="setting"><code>BudgetTimeout = 10</code><p>Maximum wait for the correct Roblox request budget.</p></div>
+					<div class="setting"><code>BudgetPollInterval = 0.25</code><p>Budget availability check frequency while waiting.</p></div>
+					<div class="setting"><code>CloseTimeout = 25</code><p>Total bounded shutdown window for retrying final releases.</p></div>
+					<div class="setting"><code>CloseRetryInterval = 1</code><p>Delay between failed shutdown release attempts.</p></div>
+					<div class="setting"><code>CloseConcurrency = 10</code><p>Maximum simultaneous shutdown releases.</p></div>
+				</article>
+				<article class="setting-group">
+					<header><span>Operation ledgers</span><strong>Durability versus record size</strong></header>
+					<div class="setting"><code>OperationProcessLimit = 50</code><p>Maximum pending operations processed in one pass so one profile cannot monopolize a write.</p></div>
+					<div class="setting"><code>MaxOperationAttempts = 10</code><p>Retry ceiling before pending work becomes a terminal Failed receipt.</p></div>
+					<div class="setting"><code>OperationTTL = 0</code><p>Maximum pending age in seconds. Zero disables expiry.</p></div>
+					<div class="setting"><code>UnknownOperationPolicy = "Retry"</code><p>Controls whether missing handlers retry, cancel or immediately fail.</p></div>
+					<div class="setting"><code>OperationReceiptLimit = 500</code><p>Retained full result/error receipts. Larger values improve inspection but consume record bytes.</p></div>
+					<div class="setting"><code>OperationDedupeLimit = 5000</code><p>Retained minimal completed-ID tombstones after full receipt pruning.</p></div>
+					<div class="setting"><code>DeadLetterLimit = 100</code><p>Retained terminal failure details. Use lower values when operation payloads are large.</p></div>
+					<div class="setting"><code>DeadLetterPayloadMaxBytes = 8192</code><p>Maximum payload bytes copied into one dead letter; larger payloads are omitted but measured.</p></div>
+					<div class="setting"><code>WriteReceiptLimit = 20</code><p>Recent commit-token receipts retained for ambiguous save-response recovery.</p></div>
+				</article>
+				<article class="setting-group">
+					<header><span>Safety and observability</span><strong>Validation, audit and incidents</strong></header>
+					<div class="setting"><code>MaxDataBytes = 3800000</code><p>Rejects records before approaching Roblox's storage limit.</p></div>
+					<div class="setting"><code>StrictData = false</code><p>Makes public Session data read-only when enabled. The player facade enables it by default.</p></div>
+					<div class="setting"><code>TrackChangeDetails = false</code><p>Includes old/new detail in change events and diffs at additional memory cost.</p></div>
+					<div class="setting"><code>AuditLogLimit = 0</code><p>Retains recent local audit entries. Zero disables the audit buffer.</p></div>
+					<div class="setting"><code>CriticalErrorThreshold = 5</code><p>Recent issue count required to enter critical state.</p></div>
+					<div class="setting"><code>CriticalWindow = 120</code><p>Seconds used when counting recent issues.</p></div>
+					<div class="setting"><code>CriticalRecovery = 60</code><p>Healthy time required before leaving critical state.</p></div>
+					<div class="setting"><code>EnableMessaging = true</code><p>Enables optional handoff and operation notifications. It is never the correctness mechanism.</p></div>
+					<div class="setting"><code>AutoReleaseOnHandoff = true</code><p>Allows a current owner to release sooner after receiving a waiting-server hint.</p></div>
+				</article>
+				<article class="setting-group">
+					<header><span>OrderedIndex settings</span><strong>Sorted query cost and freshness</strong></header>
+					<div class="setting"><code>RetryAttempts = 5</code><p>Bounded OrderedDataStore request attempts before returning an explicit error.</p></div>
+					<div class="setting"><code>RetryDelay = 0.5 / RetryBackoff = 2</code><p>Delay and exponential multiplier between failed projection or query attempts.</p></div>
+					<div class="setting"><code>BudgetTimeout = 10</code><p>Maximum wait for OrderedRead, OrderedWrite, OrderedRemove or GetSortedAsync request budget.</p></div>
+					<div class="setting"><code>DefaultPageSize = 50</code><p>Sorted page size used when the query does not specify one; Roblox permits at most 100.</p></div>
+					<div class="setting"><code>MaxQueryEntries = 1000</code><p>Hard ceiling for one top query or rank scan request.</p></div>
+					<div class="setting"><code>MaxRankScan = 1000</code><p>Default number of sorted entries scanned while searching for one key's rank.</p></div>
+					<div class="setting"><code>CacheTTL = 0</code><p>Local sorted-query cache duration. Zero disables cache; writes clear this server's cached lists.</p></div>
+				</article>
+			</div>
+		</section>
+
+		<section id="states" class="section reveal">
+			<div class="section-heading split-heading">
+				<div>
+					<p class="kicker">Errors and states</p>
+					<h2>What to do when a call does not succeed.</h2>
+				</div>
+				<p>
+					VirtualStore returns an error instead of quietly opening blank data. Check the error code,
+					log the detail, and stop the current gameplay action when the profile is not safe to use.
+				</p>
+			</div>
+
+			<div class="status-grid">
+				<article>
+					<header><span>Player load state</span><strong>Facade lifecycle</strong></header>
+					<div><code>Loading</code><p>Initial open has started; gameplay must wait.</p></div>
+					<div><code>Retrying</code><p>A temporary load attempt failed and the same claim is retrying.</p></div>
+					<div><code>Ready</code><p>Validated active Session exists and gameplay may proceed.</p></div>
+					<div><code>Failed</code><p>Configured attempts ended without a safe profile; fail closed.</p></div>
+					<div><code>Releasing / Released</code><p>Final ownership end is in progress or confirmed.</p></div>
+				</article>
+				<article>
+					<header><span>Operation status</span><strong>Durable work lifecycle</strong></header>
+					<div><code>Queued / Pending</code><p>Work is stored but has not reached a terminal receipt.</p></div>
+					<div><code>Applied</code><p>Handler mutation and success receipt committed together.</p></div>
+					<div><code>Cancelled</code><p>Work deliberately ended without applying its intended mutation.</p></div>
+					<div><code>Failed</code><p>Work ended after policy, attempts, expiry or administrator action.</p></div>
+					<div><code>Unknown</code><p>No retained pending, receipt or dedupe record currently identifies the ID.</p></div>
+				</article>
+				<article>
+					<header><span>Common errors</span><strong>Recommended response</strong></header>
+					<div><code>LockTimeout</code><p>Another active lease did not release in time. Wait, retry later or investigate before exact-token repair.</p></div>
+					<div><code>LeaseLost</code><p>This server no longer owns the stored token. Stop writes and end gameplay tied to this Session.</p></div>
+					<div><code>PlayerDataUnavailable</code><p>Player facade has no Ready Session. Do not grant or mutate; wait for Ready or stop the action.</p></div>
+					<div><code>AdminAccessDisabled / Denied</code><p>Admin authorization is absent or rejected. Never work around it through a client remote.</p></div>
+					<div><code>LeaseTokenMismatch</code><p>The inspected lease changed before force release. Reinspect; never release a guessed token.</p></div>
+				</article>
+			</div>
+
+			<div class="production-checklist">
+				<header><span>Before release</span><strong>Checks for games with valuable player data</strong></header>
+				<ul>
+					<li>Enable strict player profiles and perform mutations through helpers or transactions.</li>
+					<li>Use globally unique operation, receipt, purchase and trade IDs that are never recycled.</li>
+					<li>Keep random selection and external side effects outside retryable operation handlers.</li>
+					<li>Replicate exact public paths; audit every parent path and transform for private data leaks.</li>
+					<li>Use checkpoints or durable operations before presenting critical external flows as final.</li>
+					<li>Build persistent saga/journal recovery for trades, auctions and other multi-key workflows.</li>
+					<li>Keep admin capabilities server-only and monitor dead letters, critical state and diagnostics.</li>
+					<li>Test outages, lease conflict, duplicate retries, shutdown, migration and missing handlers before release.</li>
+					<li>Keep leaderboard projections separate from authoritative currency and expect temporary OrderedIndex lag.</li>
+				</ul>
+			</div>
+		</section>
+
+		<section id="performance" class="section performance reveal">
+			<div>
+				<p class="kicker">Testing</p>
+				<h2>Test the failure cases before publishing.</h2>
+				<p>
+					The included benchmark opens 100 memory-backed sessions and adds fake write latency.
+					It is useful for checking scheduler behavior, but it is not a measurement of Roblox's live DataStore speed.
+				</p>
+			</div>
+			<div class="metrics">
+				<div><strong>100</strong><span>simulated sessions</span></div>
+				<div><strong>bounded</strong><span>autosave concurrency</span></div>
+				<div><strong>visible</strong><span>requests, retries and latency</span></div>
+			</div>
+		</section>
+
+		<section class="cta reveal">
+			<p class="kicker">VirtualStore v0.1.0</p>
+			<h2>Start with the simple API.</h2>
+			<p>Use the player facade for normal data. Add durable operations, repair tools, and trade recovery only when the game actually needs them.</p>
+			<div class="hero-actions">
+				<a class="button button-primary" href="#start">Read the setup</a>
+				<a class="button button-secondary" href="#reference">Open the API reference</a>
+			</div>
+		</section>
+	</main>
+
+	<footer class="footer">
+		<div>
+			<strong>VirtualStore</strong>
+			<span>Player data, replication, operations and recovery for Roblox.</span>
+		</div>
+		<span>Documentation release v0.1.0</span>
+	</footer>
+</body>
+</html>
