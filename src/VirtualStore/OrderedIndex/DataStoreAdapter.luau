@@ -12,13 +12,13 @@ local REQUEST_BUDGETS = {
 	Remove = {Enum.DataStoreRequestType.OrderedRemove},
 }
 
-function DataStoreAdapter.new(name: string, scope: string?)
-	return setmetatable({
-		_store = DataStoreService:GetOrderedDataStore(name, scope),
-	}, DataStoreAdapter)
-end
+-- Both leaderboard indices share this module-wide gate. The budget check is
+-- kept together with the real request so concurrent projections cannot all
+-- consume the same apparent final token and overflow Roblox's throttle queue.
+local writeBusy = false
+local writeReleased = Instance.new("BindableEvent")
 
-function DataStoreAdapter:WaitForBudgetAsync(requestKind: string, timeout: number, pollInterval: number): boolean
+local function waitForBudget(requestKind: string, timeout: number, pollInterval: number): boolean
 	local budgets = REQUEST_BUDGETS[requestKind]
 	if not budgets then
 		return true
@@ -43,12 +43,51 @@ function DataStoreAdapter:WaitForBudgetAsync(requestKind: string, timeout: numbe
 	end
 end
 
+local function withWriteGate(requestKind: string, callback: () -> ...any): ...any
+	while writeBusy do
+		writeReleased.Event:Wait()
+	end
+	writeBusy = true
+
+	local results = table.pack(pcall(function()
+		-- OrderedIndex already performed the bounded wait. Re-check without
+		-- extending its timeout while this shared gate is held.
+		if not waitForBudget(requestKind, 0, 0.25) then
+			error(`OrderedDataStore {requestKind} budget changed before the request started`)
+		end
+		return callback()
+	end))
+
+	writeBusy = false
+	writeReleased:Fire()
+
+	if not results[1] then
+		error(results[2], 0)
+	end
+
+	return table.unpack(results, 2, results.n)
+end
+
+function DataStoreAdapter.new(name: string, scope: string?)
+	return setmetatable({
+		_store = DataStoreService:GetOrderedDataStore(name, scope),
+	}, DataStoreAdapter)
+end
+
+function DataStoreAdapter:WaitForBudgetAsync(requestKind: string, timeout: number, pollInterval: number): boolean
+	return waitForBudget(requestKind, timeout, pollInterval)
+end
+
 function DataStoreAdapter:SetAsync(key: string, value: number): any
-	return self._store:SetAsync(key, value)
+	return withWriteGate("Write", function()
+		return self._store:SetAsync(key, value)
+	end)
 end
 
 function DataStoreAdapter:IncrementAsync(key: string, delta: number): number
-	return self._store:IncrementAsync(key, delta)
+	return withWriteGate("Write", function()
+		return self._store:IncrementAsync(key, delta)
+	end)
 end
 
 function DataStoreAdapter:GetAsync(key: string): number?
@@ -56,7 +95,9 @@ function DataStoreAdapter:GetAsync(key: string): number?
 end
 
 function DataStoreAdapter:RemoveAsync(key: string): number?
-	return self._store:RemoveAsync(key)
+	return withWriteGate("Remove", function()
+		return self._store:RemoveAsync(key)
+	end)
 end
 
 function DataStoreAdapter:GetSortedAsync(ascending: boolean, pageSize: number, minValue: number?, maxValue: number?): any
